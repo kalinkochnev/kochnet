@@ -28,7 +28,7 @@ impl WeatherData {
         return &self.records;
     }
 
-    fn load_first_amount(&self, rows: usize) -> Result<(), Box<dyn Error>> {
+    fn load_first_amount(&mut self, rows: usize) -> Result<(), Box<dyn Error>> {
         let mut count = 0;
 
         for result in self.reader.deserialize() {

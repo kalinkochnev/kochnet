@@ -13,4 +13,8 @@ impl Node {
     pub fn weights(&self) -> &Vec<f32> {
         return &self.weights;
     }
+
+    pub fn weights_mut(&mut self) -> &mut Vec<f32> {
+        return &mut self.weights;
+    }
 }

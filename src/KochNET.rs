@@ -5,6 +5,12 @@ pub struct KochNET {
 }
 
 impl KochNET {
+
+    pub fn new(layer_config: Vec<usize>) -> KochNET {
+        let mut nn = Self::empty();
+        nn.reconfigure(layer_config);
+        return nn;
+    }
     pub fn empty() -> KochNET {
         let nn = KochNET {
             layers: Vec::new(),
@@ -14,7 +20,7 @@ impl KochNET {
     }
 
     /* Reconfigures the layers entirely (drops the old weights) */
-    pub fn reconfigure(mut self, mut layer_config: Vec<usize>) -> Self {
+    pub fn reconfigure(&mut self, layer_config: Vec<usize>) {
         self.layers = Vec::new();
         self.biases = vec![0.0; layer_config.last().unwrap().clone()];
 
@@ -33,19 +39,19 @@ impl KochNET {
             self.layers.push(new_layer);
         }
 
-        return self;
     }
 
     // https://github.com/jackm321/RustNN/blob/master/src/lib.rs
     /* Return the error of each output */
-    pub fn train_iter(&self, input: &Vec<f32>, expected_output: &Vec<f32>) -> (Vec<f32>, Vec<f32>) {
-        let errors = Vec::new();
+    pub fn train_iter(&mut self, input: &Vec<f32>, expected_output: &Vec<f32>) -> (Vec<f32>, Vec<f32>) {
+        todo!();
+        // let errors = Vec::new();
 
     }
 
-    pub fn train(&self, epochs: usize, examples: &Vec<(Vec<f32>, Vec<f32>)>) {
+    pub fn train(&mut self, epochs: usize, examples: &Vec<(Vec<f32>, Vec<f32>)>) {
         for e in 0..epochs {
-            let (input, expected_output) = examples[e % examples.len()];
+            let (input, expected_output) = &examples[e % examples.len()];
             self.train_iter(&input, &expected_output);
         }
     }
@@ -101,7 +107,7 @@ mod tests {
     fn test_intialization() {
         //---------- Test with large neural network
         let layer_sizes = vec![2, 3, 4, 5, 6];
-        let nn = KochNET::empty().reconfigure(layer_sizes.clone());
+        let nn = KochNET::new(layer_sizes.clone());
 
         assert_eq!(nn.layers.len(), layer_sizes.len());
         assert_eq!(nn.biases.len(), 6);
@@ -128,9 +134,9 @@ mod tests {
     #[test]
     fn test_OR_eval() {
         fn ann_OR(A: u32, B: u32) -> f32 {
-            let mut nn = KochNET::empty().reconfigure(vec![2, 1]);
-            nn.layers[1][0].weights[0] = 1.0;
-            nn.layers[1][0].weights[1] = 1.0;
+            let mut nn = KochNET::new(vec![2, 1]);
+            nn.layers[1][0].weights_mut()[0] = 1.0;
+            nn.layers[1][0].weights_mut()[1] = 1.0;
             nn.biases[0] = -0.5;
 
             return nn.evaluate(&[A as f32, B as f32])[0];
@@ -145,9 +151,9 @@ mod tests {
     #[test]
     fn test_AND_eval() {
         fn ann_AND(A: u32, B: u32) -> f32 {
-            let mut nn = KochNET::empty().reconfigure(vec![2, 1]);
-            nn.layers[1][0].weights[0] = 0.4;
-            nn.layers[1][0].weights[1] = 0.4;
+            let mut nn = KochNET::new(vec![2, 1]);
+            nn.layers[1][0].weights_mut()[0] = 0.4;
+            nn.layers[1][0].weights_mut()[1] = 0.4;
             nn.biases[0] = -0.5;
 
             return nn.evaluate(&[A as f32, B as f32])[0];
@@ -162,7 +168,7 @@ mod tests {
     
     #[test]
     fn test_OR_train() {
-        let mut OR_nn = KochNET::empty().reconfigure(vec![2, 1]);
+        let mut OR_nn = KochNET::new(vec![2, 1]);
 
         let examples = vec![
             (vec![0.0, 0.0], vec![0.0]),
@@ -180,7 +186,7 @@ mod tests {
 
     #[test]
     fn test_XOR_train() {
-        let mut XOR_nn = KochNET::empty().reconfigure(vec![2, 2, 1]);
+        let mut XOR_nn = KochNET::new(vec![2, 2, 1]);
 
         let examples = vec![
             (vec![0.0, 0.0], vec![0.0]),

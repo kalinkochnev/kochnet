@@ -7,7 +7,7 @@ use chrono::{NaiveDate};
 // https://serde.rs/custom-date-format.html
 // https://docs.rs/csv/1.1.6/csv/tutorial/index.html#reading-csv
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct WeatherRecord {
     pub name: String,
     #[serde(with = "YYYY_MM_DDFormat")]
