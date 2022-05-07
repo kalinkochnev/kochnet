@@ -26,6 +26,7 @@ impl<'a> WeatherNeuralNetwork<'a> {
 
         // initialize weather types so layer size
         weather_net.init_weather_conditions();
+        weather_net.network.set_activation_func(&KochNET::sigmoid);
 
         // set layer sizes
         let mut layers = vec![weather_net.input_size()];
