@@ -1,14 +1,15 @@
 use std::error::Error;
 use std::fs::File;
 use crate::weather_record::WeatherRecord;
-
-
+use rand::thread_rng;
+use rand::seq::SliceRandom;
 
 pub enum RecordsSetting {
     All, // Retrieves all records
     FirstAmount(usize), // First number of records regardless of cleaned status
     Clean, // Retrieves all clean records
     MaxCleanAmount(usize), // Maximum number of cleaned records to attempt to retrieve
+    RandomFirst(usize)
 }
 pub struct WeatherData {
     reader: csv::Reader<File>,
@@ -28,7 +29,7 @@ impl WeatherData {
         return &self.records;
     }
 
-    fn load_first_amount(&mut self, rows: usize) -> Result<(), Box<dyn Error>> {
+    fn load_first_amount(&mut self, rows: usize) {
         let mut count = 0;
 
         for result in self.reader.deserialize() {
@@ -36,15 +37,30 @@ impl WeatherData {
                 break;
             }
             count += 1;
-            let record: WeatherRecord = result?;
-            println!("{:?}", record)
+            match result {
+                Ok(record) => self.records.push(record),
+                Error => {}
+            };
         }
-        return Ok(());
     }
 
-    pub fn load_data(&mut self, setting: RecordsSetting) -> Result<(), Box<dyn Error>>{
+    fn load_all(&mut self) {
+        for result in self.reader.deserialize() {
+            match result {
+                Ok(record) => self.records.push(record),
+                Error => {}
+            };
+        }
+    }
+
+    pub fn shuffle_data(&mut self) {
+        self.records.shuffle(&mut thread_rng());
+    }
+
+    pub fn load_data(&mut self, setting: RecordsSetting) {
         match setting {
-            RecordsSetting::FirstAmount(rows) => return self.load_first_amount(rows),
+            RecordsSetting::FirstAmount(rows) => self.load_first_amount(rows),
+            RecordsSetting::All => self.load_all(), 
             _ => {todo!()}
         }
     }
