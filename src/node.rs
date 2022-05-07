@@ -14,7 +14,7 @@ impl Node {
         }
         Node {
             weights: weights,
-            bias: 0.0//rand::thread_rng().gen_range(-1.0..1.0)
+            bias: rand::thread_rng().gen_range(-1.0..1.0)
         }
     }
 

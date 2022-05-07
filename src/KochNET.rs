@@ -1,6 +1,5 @@
 use crate::node::Node;
-use rand::Rng;
-use log::{debug, info, trace};
+use log::{debug};
 
 pub struct KochNET {
     layers: Vec<Vec<Node>>,
@@ -61,19 +60,19 @@ impl KochNET {
         }
     }
 
-    /// Returns an uninitialized set of nodes with the proper number of weights
-    fn clone_node_shape(&self) -> Vec<Vec<Node>> {
-        let mut layers = Vec::new();
-        for l in self.layers.iter() {
-            let mut copied_nodes = Vec::new();
+    // /// Returns an uninitialized set of nodes with the proper number of weights
+    // fn clone_node_shape(&self) -> Vec<Vec<Node>> {
+    //     let mut layers = Vec::new();
+    //     for l in self.layers.iter() {
+    //         let mut copied_nodes = Vec::new();
 
-            for node in l.iter() {
-                copied_nodes.push(Node::new(&node.weights().len()));
-            }
-            layers.push(copied_nodes);
-        }
-        return layers;
-    }
+    //         for node in l.iter() {
+    //             copied_nodes.push(Node::new(&node.weights().len()));
+    //         }
+    //         layers.push(copied_nodes);
+    //     }
+    //     return layers;
+    // }
 
     // https://github.com/jackm321/RustNN/blob/master/src/lib.rs
     /* Returns the squared error of each output and the output itself */
@@ -103,7 +102,7 @@ impl KochNET {
                 let new_output_node = &mut new_layers[output_layer_index][i];
 
                 // iterate through each input node
-                for (j, input_node) in input_layer.iter().enumerate() {
+                for (j, _input_node) in input_layer.iter().enumerate() {
                     debug!("Weight change {}(input node) ---> {}(output node)", j, i);
                     let (err_term, change_in_weight): (f32, f32);
 
@@ -185,7 +184,7 @@ impl KochNET {
         let output_layer = &self.layers[input_layer_index + 1];
         let mut err_rspct_input_actv = 0.0; // δ(Error)/δ(output)j where j is the "input" layer (since we're working backwards)
 
-        for (output_ind, output_neuron) in output_layer.iter().enumerate() {
+        for (_output_ind, output_neuron) in output_layer.iter().enumerate() {
             let input_output_weight = output_neuron.weights()[start_index];
             err_rspct_input_actv += input_output_weight * &errors[end_index];
         }
@@ -198,17 +197,18 @@ impl KochNET {
         let error_term = err_rspct_input_actv * activation_rspct_wghted_sum;
 
         // Calculate the gradient of the error function with respect to weight
-        let output_activation = &layer_activations[input_layer_index ][end_index];
+        let output_activation = &layer_activations[input_layer_index][end_index];
         let delta_error_resp_weight = error_term * output_activation;
 
         return (error_term, delta_error_resp_weight);
     }
 
     fn rmse(&self, output: &Vec<f32>, expected: &Vec<f32>) -> f32 {
-        output
-            .iter()
-            .zip(expected.iter())
-            .fold(0.0, |acc, (output, expected)| (output - expected).powf(2.0))
+        let mut total = 0.0;
+        for (out, exp) in output.iter().zip(expected.iter()) {
+            total += (out - exp).powf(2.0);
+        }
+        return total;
     }
 
     pub fn train(&mut self, epochs: usize, examples: &Vec<(Vec<f32>, Vec<f32>)>) {
@@ -219,7 +219,7 @@ impl KochNET {
             debug!("TEST CASE: \n input: {:?} \n expected: {:?} \n", input, expected_output);
 
             let (rmse, output) = self.train_iter(input, expected_output);
-            print!("{}, ", rmse);
+            // print!("{}, ", rmse);
         }
     }
 

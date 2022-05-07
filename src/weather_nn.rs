@@ -1,11 +1,13 @@
 use chrono::Datelike;
-
+use lazy_static::lazy_static;
+use log::debug;
 use crate::{
     weather_data::{RecordsSetting, WeatherData},
     weather_record::WeatherRecord,
     KochNET::KochNET,
 };
 use std::{error::Error, collections::HashMap, cmp::Ordering};
+use regex::Regex;
 
 pub struct WeatherNeuralNetwork<'a> {
     pub data: &'a Vec<WeatherRecord>,
@@ -17,13 +19,14 @@ impl<'a> WeatherNeuralNetwork<'a> {
     pub fn new(
         hidden_layer_sizes: Vec<usize>,
         weather_data: &'a Vec<WeatherRecord>,
+        learn_rate: f32,
     ) -> Result<Self, Box<dyn Error>> {
         let mut weather_net = Self {
             data: weather_data,
             network: KochNET::empty(),
             conditions: Vec::new(),
         };
-        weather_net.network.set_learn_rate(0.01);
+        weather_net.network.set_learn_rate(learn_rate);
 
         // initialize weather types so layer size
         weather_net.init_weather_conditions();
@@ -44,11 +47,16 @@ impl<'a> WeatherNeuralNetwork<'a> {
 
     fn init_weather_conditions(&mut self) {
         for record in self.data.iter() {
-            let weather_condition = &record.conditions;
-            if !self.conditions.contains(weather_condition) {
-                self.conditions.push(weather_condition.clone());
+            let weather_conditions = self.parse_conditions(&record.conditions);
+            
+            for cond in weather_conditions.iter() {
+                if !self.conditions.contains(cond) {
+                    self.conditions.push(cond.clone());
+                }
             }
+
         }
+        debug!("{:?}", self.conditions());
     }
 
     fn output_size(&self) -> usize {
@@ -73,7 +81,7 @@ impl<'a> WeatherNeuralNetwork<'a> {
     }
 
     pub fn record_to_neural_input(&self, record: &WeatherRecord) -> Vec<f32> {
-        vec![
+        let mut neural_input = vec![
             record.datetime.ordinal0() as f32,
             record.tempmax,
             record.tempmin,
@@ -86,32 +94,59 @@ impl<'a> WeatherNeuralNetwork<'a> {
             record.sealevelpressure,
             record.cloudcover,
             record.visibility,
-            self.condition_to_input(&record.conditions),
-        ]
+        ];
+        neural_input.extend(self.conditions_to_input(&record.conditions));
+        return neural_input;
     }
 
     /* Returns a float representation of a weather condition to be used for training in the neural network */
-    fn condition_to_input(&self, weather_condition: &String) -> f32 {
-        return self.conditions.iter().position(|item| item == weather_condition).unwrap() as f32;
+    fn conditions_to_input(&self, weather_condition: &String) -> Vec<f32> {
+        let conditions = self.parse_conditions(weather_condition);
+        let mut output = vec![0.0; self.conditions.len()];
+
+        for (i, poss_condition) in self.conditions().iter().enumerate() {
+            if conditions.contains(poss_condition) {
+                output[i] = 1.0;
+            }
+        }
+        return output;
     }
 
     pub fn record_to_neural_output(&self, record: &WeatherRecord) -> Vec<f32> {
-        let condition_index = self.conditions.iter().position(|item| record.conditions == *item).unwrap();
-        let mut neural_output_equiv = vec![0.0; condition_index];
-        neural_output_equiv.push(1.0);
-        neural_output_equiv.extend(vec![0.0; self.conditions().len() - neural_output_equiv.len()]);
-
-        return neural_output_equiv;
+        return self.conditions_to_input(&record.conditions);
     }
 
-    pub fn neural_output_to_type(&self, output: Vec<f32>) -> &String {
-        let index_of_max: Option<usize> = output
-        .iter()
-        .enumerate()
-        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(Ordering::Equal))
-        .map(|(index, _)| index);
+    fn parse_conditions(&self, condition: &str) -> Vec<String> {
+        fn remove_trailing_whitespace(word: &str) -> String {
+            lazy_static! {
+                // matches any comma separated values (and ignores leading/trailing whitespaces)
+                static ref RE: Regex = Regex::new(r"^[ \t]+|[ \t]+$").unwrap();
+            };
 
-        return self.conditions.get(index_of_max.unwrap()).unwrap();
+            let result = RE.replace_all(word, "");
+            return result.into_owned();
+        }
+        
+        let mut conditions = Vec::new();
+
+        for cond in condition.split(",") {
+            conditions.push(remove_trailing_whitespace(cond));
+        }
+        
+        return conditions;
+    }
+
+    pub fn neural_output_to_conditions(&self, output: &Vec<f32>) -> Vec<String> {
+        const THRESHOLD: f32 = 0.50;
+
+        let  mut conditions = Vec::new();
+        for (index, activation) in output.iter().enumerate() {
+            if activation >= &THRESHOLD {
+                conditions.push(self.conditions.get(index).unwrap().clone());
+            }
+        }
+
+        return conditions;
     }
 
     pub fn create_training_examples(&self) -> Vec<(Vec<f32>, Vec<f32>)>{
@@ -130,7 +165,6 @@ mod tests {
     use chrono::NaiveDate;
 
     use crate::{weather_record::WeatherRecord, weather_nn::WeatherNeuralNetwork};
-
 
     fn new_rec() -> WeatherRecord {
         WeatherRecord {
@@ -155,11 +189,11 @@ mod tests {
 
     fn record_fixture() -> Vec<WeatherRecord> {
         let mut r1 = new_rec();
-        r1.conditions = String::from("sunny and rainy");
+        r1.conditions = String::from("sunny, rainy");
         let r1_dup = r1.clone();
 
         let mut r2 = new_rec();
-        r2.conditions = String::from("thunderstorm");
+        r2.conditions = String::from("thunderstorm, clouds");
 
         let mut r3 = new_rec();
         r3.conditions = String::from("tornado");
@@ -168,14 +202,42 @@ mod tests {
     }
 
     #[test]
-    fn test_input_output_conversion() {
+    fn test_parse_conditions() {
         let records = record_fixture();
-        let weather_nn = WeatherNeuralNetwork::new(vec![3, 2, 1], &records).unwrap();
-    
-        assert_eq!(weather_nn.conditions().len(), 3); // there should only be 3 unique conditions based on the data
-        
-        assert_eq!(weather_nn.condition_to_input(&String::from("thunderstorm")), 1.0);
-        assert_eq!(weather_nn.neural_output_to_type(vec![0.0, 1.0, 0.0]), "thunderstorm");
+        let mut weather_nn = WeatherNeuralNetwork::new(vec![3, 2, 1], &records, 0.05).unwrap();
+        let result = weather_nn.parse_conditions("rain, snow, chance of tornados");
+        assert_eq!(result, vec!["rain", "snow", "chance of tornados"])
     }
 
+    #[test]
+    fn test_input_output_conversion() {
+        let records = record_fixture();
+        let mut weather_nn = WeatherNeuralNetwork::new(vec![3, 2, 1], &records, 0.05).unwrap();
+        weather_nn.init_weather_conditions();
+
+        assert_eq!(weather_nn.conditions().len(), 5); // there should only be 3 unique conditions based on the data
+        
+        assert_eq!(weather_nn.conditions_to_input(&String::from("thunderstorm, tornado, sunny")), vec![1.0, 0.0, 1.0, 0.0, 1.0]);
+        assert_eq!(weather_nn.neural_output_to_conditions(&vec![1.0, 0.0, 1.0, 0.0, 1.0]), vec![String::from("sunny"), String::from("thunderstorm"), String::from("tornado")]);
+    }
+
+    #[test]
+    fn test_training_examples() {
+        let records = record_fixture();
+
+        let mut weather_nn = WeatherNeuralNetwork::new(vec![3, 2, 1], &records, 0.05).unwrap();
+        weather_nn.init_weather_conditions();
+    
+        let examples = weather_nn.create_training_examples();
+        
+        let expected = vec![
+            (weather_nn.record_to_neural_input(&records[0]), weather_nn.record_to_neural_output(&records[1])),
+            (weather_nn.record_to_neural_input(&records[1]), weather_nn.record_to_neural_output(&records[2])),
+        
+        ];
+
+        for (ex, expected) in examples.iter().zip(expected.iter()) {
+            assert_eq!(ex, expected);
+        }
+    }
 }
