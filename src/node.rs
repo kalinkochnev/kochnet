@@ -26,6 +26,20 @@ impl Node {
         return &mut self.weights;
     }
 
+    
+
+    /* Calculates the change in weights and returns a node
+    object with how much to change the weights and bias.
+    Accepts the previous layers activations */
+    // pub fn delta_weights_output(&self, activations: Vec<f32> ) -> Node {
+    //     let weights_iter = self.weights.iter().chain(vec![self.bias].iter());
+
+    //     let new_weights = Vec::new();
+    //     for  in self.weights.iter().enumerate() {
+            
+    //     }
+    // }
+
     pub fn bias(&self) -> &f32 {
         return &self.bias;
     }

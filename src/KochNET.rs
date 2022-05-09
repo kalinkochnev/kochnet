@@ -124,7 +124,7 @@ impl KochNET {
         }
 
         self.layers = new_layers;
-        debug!("new layers:\n{:?}\n\n\n", self.layers);
+        debug!("new layers:\n{:#?}\n\n\n", self.layers);
         return (self.rmse(&output, expected_output), output);
     }
 
@@ -145,7 +145,7 @@ impl KochNET {
         // Calculate the gradient of the error function with respect to weight
         let last_layer_index = layer_activations.len() - 1;
         let input_activation =  &layer_activations.get(last_layer_index - 1).unwrap()[start_index];
-        debug!("poss porlblem? : {:?}", &layer_activations.get(last_layer_index - 1));
+        debug!("layer activation : {:?}", &layer_activations.get(last_layer_index - 1));
         debug!("Activation of input (j={}): {}", start_index, input_activation);
         
 
@@ -341,6 +341,28 @@ mod tests {
         assert_eq!(ann_AND(0, 1), 0.0);
         assert_eq!(ann_AND(1, 0), 0.0);
         assert_eq!(ann_AND(1, 1), 1.0);
+    }
+
+    #[test]
+    fn test_AND_train() {
+        simple_logging::log_to_file("and_train.log", LevelFilter::Debug);
+
+        let mut OR_nn = KochNET::new(vec![2, 1], 0.1);
+        OR_nn.set_activation_func(&KochNET::sigmoid);
+        // OR_nn.layers[1][0].set_bias(-0.5);
+
+        let examples = vec![
+            (vec![0.0, 0.0], vec![0.0]),
+            (vec![1.0, 0.0], vec![0.0]),
+            (vec![0.0, 1.0], vec![0.0]),
+            (vec![1.0, 1.0], vec![1.0]),
+        ];
+        OR_nn.train(100, &examples);
+
+        assert_eq!(OR_nn.run(&vec![0.0, 0.0])[0].round(), 0.0);
+        assert_eq!(OR_nn.run(&vec![0.0, 1.0])[0].round(), 0.0);
+        assert_eq!(OR_nn.run(&vec![1.0, 0.0])[0].round(), 0.0);
+        assert_eq!(OR_nn.run(&vec![1.0, 1.0])[0].round(), 1.0);
     }
 
     #[test]

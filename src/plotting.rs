@@ -22,11 +22,6 @@ pub fn plot_line(data: &Vec<(f32, f32)>, filename: &str)-> Result<(), Box<dyn st
     ))?;
 
 
-    chart
-        .configure_series_labels()
-        .border_style(&BLACK)
-        .draw()?;
-
     // To avoid the IO failure being ignored silently, we manually call the present function
     root.present().expect("Unable to write result to file, please make sure 'plotters-doc-data' dir exists under current dir");
     println!("Result has been saved to {}", filename);
