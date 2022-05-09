@@ -7,12 +7,12 @@ use crate::KochNET::KochNET;
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct Node {
-    weights: Vec<f32>,
-    bias: f32
+    weights: Vec<f64>,
+    bias: f64
 }
 impl Node {
     pub fn new(num_weights: &usize) -> Node {
-        let mut weights: Vec<f32> = vec![];
+        let mut weights: Vec<f64> = vec![];
         for i in 0..*num_weights as u32 {
             weights.push(1.0);//rand::thread_rng().gen_range(-1.0..1.0));
         }
@@ -22,19 +22,19 @@ impl Node {
         }
     }
 
-    pub fn weights(&self) -> &Vec<f32> {
+    pub fn weights(&self) -> &Vec<f64> {
         return &self.weights;
     }
 
-    pub fn weights_mut(&mut self) -> &mut Vec<f32> {
+    pub fn weights_mut(&mut self) -> &mut Vec<f64> {
         return &mut self.weights;
     }
 
     /// Returns a `Node` with the the weights attribute representing how much to change the weights
     /// as well as the bias representing how much to change the bias.
-    /// Returns (f32, Node) -> (error term for node, change of the node)
-    pub fn delta_node_output_layer(&self, learn_rate: f32, actual_activ: &f32, target_activ: &f32, prev_activations: &Vec<f32>) -> (f32, Node) {
-        fn error_term(target: &f32, node_output: &f32) -> f32 {
+    /// Returns (f64, Node) -> (error term for node, change of the node)
+    pub fn delta_node_output_layer(&self, learn_rate: f64, actual_activ: &f64, target_activ: &f64, prev_activations: &Vec<f64>) -> (f64, Node) {
+        fn error_term(target: &f64, node_output: &f64) -> f64 {
             debug!("expected: {} actual: {}", target, node_output);
             let err = (target - node_output ) * node_output * (1.0 - node_output);
             debug!("change: ({} - {} ) * {} * (1.0 - {}) = {}", target, node_output, node_output, node_output, err);
@@ -60,8 +60,8 @@ impl Node {
         return (node_error, Node {weights: weight_changes, bias: bias_change})
     }
 
-    pub fn delta_node_hidden_layer(&self) -> (f32, Node) {
-        
+    pub fn delta_node_hidden_layer(&self, learn_rate: f64, errors: Vec<f64>) -> (f64, Node) {
+        todo!();
     }
 
     pub fn apply_changes(&mut self, delta: &Node) {
@@ -71,11 +71,11 @@ impl Node {
         self.bias += delta.bias;
     }
 
-    pub fn bias(&self) -> &f32 {
+    pub fn bias(&self) -> &f64 {
         return &self.bias;
     }
 
-    pub fn set_bias(&mut self, bias: f32)  {
+    pub fn set_bias(&mut self, bias: f64)  {
         self.bias = bias;
     }
 }

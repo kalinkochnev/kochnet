@@ -19,7 +19,7 @@ impl<'a> WeatherNeuralNetwork<'a> {
     pub fn new(
         hidden_layer_sizes: Vec<usize>,
         weather_data: &'a Vec<WeatherRecord>,
-        learn_rate: f32,
+        learn_rate: f64,
     ) -> Result<Self, Box<dyn Error>> {
         let mut weather_net = Self {
             data: weather_data,
@@ -76,13 +76,13 @@ impl<'a> WeatherNeuralNetwork<'a> {
     }
 
     /* Outputs the errors of the output and the output of the network*/
-    pub fn train_iter(&mut self, input: &Vec<f32>, expected_output: &Vec<f32>) -> (f32, Vec<Layer>, Vec<f32>) {
+    pub fn train_iter(&mut self, input: &Vec<f64>, expected_output: &Vec<f64>) -> (f64, Vec<Layer>, Vec<f64>) {
         return self.network.train_iter(input, expected_output);
     }
 
-    pub fn record_to_neural_input(&self, record: &WeatherRecord) -> Vec<f32> {
+    pub fn record_to_neural_input(&self, record: &WeatherRecord) -> Vec<f64> {
         let mut neural_input = vec![
-            record.datetime.ordinal0() as f32,
+            record.datetime.ordinal0() as f64,
             record.tempmax,
             record.tempmin,
             record.temp,
@@ -100,7 +100,7 @@ impl<'a> WeatherNeuralNetwork<'a> {
     }
 
     /* Returns a float representation of a weather condition to be used for training in the neural network */
-    fn conditions_to_input(&self, weather_condition: &String) -> Vec<f32> {
+    fn conditions_to_input(&self, weather_condition: &String) -> Vec<f64> {
         let conditions = self.parse_conditions(weather_condition);
         let mut output = vec![0.0; self.conditions.len()];
 
@@ -112,7 +112,7 @@ impl<'a> WeatherNeuralNetwork<'a> {
         return output;
     }
 
-    pub fn record_to_neural_output(&self, record: &WeatherRecord) -> Vec<f32> {
+    pub fn record_to_neural_output(&self, record: &WeatherRecord) -> Vec<f64> {
         return self.conditions_to_input(&record.conditions);
     }
 
@@ -136,8 +136,8 @@ impl<'a> WeatherNeuralNetwork<'a> {
         return conditions;
     }
 
-    pub fn neural_output_to_conditions(&self, output: &Vec<f32>) -> Vec<String> {
-        const THRESHOLD: f32 = 0.50;
+    pub fn neural_output_to_conditions(&self, output: &Vec<f64>) -> Vec<String> {
+        const THRESHOLD: f64 = 0.50;
 
         let  mut conditions = Vec::new();
         for (index, activation) in output.iter().enumerate() {
@@ -149,7 +149,7 @@ impl<'a> WeatherNeuralNetwork<'a> {
         return conditions;
     }
 
-    pub fn create_training_examples(&self) -> Vec<(Vec<f32>, Vec<f32>)>{
+    pub fn create_training_examples(&self) -> Vec<(Vec<f64>, Vec<f64>)>{
         let mut examples = Vec::new();
         for record_index in 0..self.data.len() - 1 {
             let curr_record = self.data.get(record_index).unwrap();

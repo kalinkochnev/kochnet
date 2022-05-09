@@ -14,9 +14,9 @@ use weather_nn::WeatherNeuralNetwork;
 use crate::weather_data::{RecordsSetting};
 
 
-fn print_progress(epoch: usize, perc_completion: f32, current_error: f32) {
+fn print_progress(epoch: usize, perc_completion: f64, current_error: f64) {
     let num_ticks = 30;
-    let times_repeat = (num_ticks as f32 * perc_completion - 1.0).round() as usize;
+    let times_repeat = (num_ticks as f64 * perc_completion - 1.0).round() as usize;
 
     if epoch % num_ticks == 0 {
         // clear the screen and then print the completion progress
@@ -52,8 +52,8 @@ fn train_network() -> Result<(), Box<dyn Error>> {
         let (error, weight_changes, output) = weather_net.train_iter(&input, &expected_output);
 
         let b1 = std::io::stdin().read_line(&mut String::from(""));
-        error_over_epochs.push((epoch as f32, error.clone()));
-        print_progress(epoch, (epoch as f32)/ (examples.len() as f32), error);
+        error_over_epochs.push((epoch as f64, error.clone()));
+        print_progress(epoch, (epoch as f64)/ (examples.len() as f64), error);
     }
 
     // keep track of the total squared error over the patterns

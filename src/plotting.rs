@@ -1,13 +1,13 @@
 use plotters::prelude::*;
 
-pub fn plot_line(data: &Vec<(f32, f32)>, filename: &str)-> Result<(), Box<dyn std::error::Error>> {
+pub fn plot_line(data: &Vec<(f64, f64)>, filename: &str)-> Result<(), Box<dyn std::error::Error>> {
     let root = BitMapBackend::new(filename, (640, 480)).into_drawing_area();    root.fill(&WHITE)?;
 
     let mut chart = ChartBuilder::on(&root)
         .caption("Weather Condition Prediction Error", ("sans-serif", (5).percent_height()))
-        .x_label_area_size(20f32)
-        .y_label_area_size(40f32)// .margin((1).percent())
-        .build_cartesian_2d(0f32..data.len() as f32, 0f32..1f32)?;
+        .x_label_area_size(20f64)
+        .y_label_area_size(40f64)// .margin((1).percent())
+        .build_cartesian_2d(0f64..data.len() as f64, 0f64..1f64)?;
 
     chart
         .configure_mesh()

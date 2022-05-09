@@ -9,12 +9,12 @@ pub type Network = Vec<Layer>;
 
 pub struct KochNET {
     layers: Vec<Layer>,
-    learn_rate: f32,
-    activation_func: Box<dyn Fn(f32) -> f32>,
+    learn_rate: f64,
+    activation_func: Box<dyn Fn(f64) -> f64>,
 }
 
 impl KochNET {
-    pub fn new(layer_config: Vec<usize>, learn_rate: f32) -> KochNET {
+    pub fn new(layer_config: Vec<usize>, learn_rate: f64) -> KochNET {
         let mut nn = Self::empty();
         nn.set_learn_rate(learn_rate);
         nn.reconfigure(layer_config);
@@ -30,11 +30,11 @@ impl KochNET {
         return nn;
     }
 
-    pub fn set_activation_func(&mut self, activation_func: &'static dyn Fn(f32) -> f32) {
+    pub fn set_activation_func(&mut self, activation_func: &'static dyn Fn(f64) -> f64) {
         self.activation_func = Box::new(activation_func);
     }
 
-    pub fn set_learn_rate(&mut self, learn_rate: f32) {
+    pub fn set_learn_rate(&mut self, learn_rate: f64) {
         self.learn_rate = learn_rate;
     }
 
@@ -68,9 +68,9 @@ impl KochNET {
 
     fn train_output_layer(
         &self,
-        activations: &Vec<Vec<f32>>,
-        expected: &Vec<f32>,
-        errors: &mut Vec<f32>,
+        activations: &Vec<Vec<f64>>,
+        expected: &Vec<f64>,
+        errors: &mut Vec<f64>,
         new_layers: &mut Vec<Layer>,
     ) {
         let second_last_activations = activations
@@ -94,10 +94,10 @@ impl KochNET {
 
     // https://github.com/jackm321/RustNN/blob/master/src/lib.rs
     /* Returns the squared error of each output and the output itself */
-    pub fn train_iter(&mut self, input: &Vec<f32>, expected_output: &Vec<f32>) -> (f32, Vec<Layer>, Vec<f32>) {
+    pub fn train_iter(&mut self, input: &Vec<f64>, expected_output: &Vec<f64>) -> (f64, Vec<Layer>, Vec<f64>) {
         let (activations, output) = self.evaluate(input);
-        // let mut prev_error_terms: Vec<f32> = Vec::new(); // keeps track of error terms
-        // let mut new_error_terms: Vec<f32> = Vec::new();
+        // let mut prev_error_terms: Vec<f64> = Vec::new(); // keeps track of error terms
+        // let mut new_error_terms: Vec<f64> = Vec::new();
 
         // Work backwards starting from the last layer as the "input"
         let mut new_layers: Vec<Layer> = vec![];
@@ -149,9 +149,9 @@ impl KochNET {
         start_index: usize,
         end_index: usize,
         input_layer_index: usize,
-        layer_activations: &Vec<Vec<f32>>,
-        errors: &Vec<f32>,
-    ) -> (f32, f32) {
+        layer_activations: &Vec<Vec<f64>>,
+        errors: &Vec<f64>,
+    ) -> (f64, f64) {
         let output_layer = &self.layers[input_layer_index + 1];
         let mut err_rspct_input_actv = 0.0; // δ(Error)/δ(output)j where j is the "input" layer (since we're working backwards)
 
@@ -174,7 +174,7 @@ impl KochNET {
         return (error_term, delta_error_resp_weight);
     }
 
-    fn rmse(&self, output: &Vec<f32>, expected: &Vec<f32>) -> f32 {
+    fn rmse(&self, output: &Vec<f64>, expected: &Vec<f64>) -> f64 {
         let mut total = 0.0;
         for (out, exp) in output.iter().zip(expected.iter()) {
             total += (out - exp).powf(2.0);
@@ -182,12 +182,12 @@ impl KochNET {
         return total;
     }
 
-    pub fn train(&mut self, epochs: usize, examples: &mut Vec<(Vec<f32>, Vec<f32>)>) {
+    pub fn train(&mut self, epochs: usize, examples: &mut Vec<(Vec<f64>, Vec<f64>)>) {
 
-        let mut avg_err = 0f32;
+        let mut avg_err = 0f64;
         for _e in 0..epochs {
             let mut combined_changes: Network = self.layers.clone();
-            let mut epoch_rmse = 0f32;
+            let mut epoch_rmse = 0f64;
             examples.shuffle(&mut thread_rng());
 
             for (input, expected) in examples.iter() {
@@ -198,7 +198,7 @@ impl KochNET {
                 // println!("{:?}", combined_changes);
                 // println!("{:?}", output);
             }
-            avg_err = epoch_rmse / (examples.len() as f32);
+            avg_err = epoch_rmse / (examples.len() as f64);
             self.layers = combined_changes;
             debug!("Avg RMSE {}: : : :\nCombined ----- {:?} ", avg_err, self.layers);
             // print!("{}, ", avg_err);
@@ -222,7 +222,7 @@ impl KochNET {
         return new_network;
     }
 
-    fn heaviside(input: f32) -> f32 {
+    fn heaviside(input: f64) -> f64 {
         if input < 0.0 {
             return 0.0;
         } else {
@@ -230,12 +230,12 @@ impl KochNET {
         }
     }
 
-    pub fn sigmoid(x: f32) -> f32 {
-        let e: f32 = std::f32::consts::E;
+    pub fn sigmoid(x: f64) -> f64 {
+        let e: f64 = std::f64::consts::E;
         return (1.0 + e.powf(-x)).powf(-1.0);
     }
 
-    fn dot_prod(v1: &Vec<f32>, v2: &Vec<f32>) -> f32 {
+    fn dot_prod(v1: &Vec<f64>, v2: &Vec<f64>) -> f64 {
         // Computes the dot product of <a_1, a_2, ..., a_n> dot <b_1, b_2, ..., b_n> + biases
         let mut total = 0.0;
         for (v1_val, v2_val) in v1.iter().zip(v2.iter()) {
@@ -246,7 +246,7 @@ impl KochNET {
 
     /// Returns (activations of network, output of network)
     /// This skips the input layer for activations
-    fn evaluate(&self, inputs: &[f32]) -> (Vec<Vec<f32>>, Vec<f32>) {
+    fn evaluate(&self, inputs: &[f64]) -> (Vec<Vec<f64>>, Vec<f64>) {
         let mut current_input = inputs.to_vec();
         let mut saved_activations = vec![current_input.clone()];
 
@@ -271,7 +271,7 @@ impl KochNET {
         return (saved_activations, current_input);
     }
 
-    pub fn run(&self, inputs: &[f32]) -> Vec<f32> {
+    pub fn run(&self, inputs: &[f64]) -> Vec<f64> {
         let (activations, output) = self.evaluate(inputs);
         return output;
     }
@@ -310,13 +310,13 @@ mod tests {
 
     #[test]
     fn test_OR_eval() {
-        fn ann_OR(A: u32, B: u32) -> f32 {
+        fn ann_OR(A: u32, B: u32) -> f64 {
             let mut nn = KochNET::new(vec![2, 1], 0.01);
             nn.layers[1][0].weights_mut()[0] = 1.0;
             nn.layers[1][0].weights_mut()[1] = 1.0;
             nn.layers[1][0].set_bias(-0.5);
 
-            return nn.run(&[A as f32, B as f32])[0];
+            return nn.run(&[A as f64, B as f64])[0];
         }
 
         assert_eq!(ann_OR(0, 0), 0.0);
@@ -327,13 +327,13 @@ mod tests {
 
     #[test]
     fn test_AND_eval() {
-        fn ann_AND(A: u32, B: u32) -> f32 {
+        fn ann_AND(A: u32, B: u32) -> f64 {
             let mut nn = KochNET::new(vec![2, 1], 0.05);
             nn.layers[1][0].weights_mut()[0] = 0.4;
             nn.layers[1][0].weights_mut()[1] = 0.4;
             nn.layers[1][0].set_bias(-0.5);
 
-            return nn.run(&[A as f32, B as f32])[0];
+            return nn.run(&[A as f64, B as f64])[0];
         }
 
         assert_eq!(ann_AND(0, 0), 0.0);
