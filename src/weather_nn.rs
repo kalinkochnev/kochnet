@@ -4,7 +4,7 @@ use log::debug;
 use crate::{
     weather_data::{RecordsSetting, WeatherData},
     weather_record::WeatherRecord,
-    KochNET::KochNET,
+    KochNET::{KochNET, Layer}, node::Node,
 };
 use std::{error::Error, collections::HashMap, cmp::Ordering};
 use regex::Regex;
@@ -76,7 +76,7 @@ impl<'a> WeatherNeuralNetwork<'a> {
     }
 
     /* Outputs the errors of the output and the output of the network*/
-    pub fn train_iter(&mut self, input: &Vec<f32>, expected_output: &Vec<f32>) -> (f32, Vec<f32>) {
+    pub fn train_iter(&mut self, input: &Vec<f32>, expected_output: &Vec<f32>) -> (f32, Vec<Layer>, Vec<f32>) {
         return self.network.train_iter(input, expected_output);
     }
 

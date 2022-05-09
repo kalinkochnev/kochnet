@@ -49,10 +49,7 @@ fn train_network() -> Result<(), Box<dyn Error>> {
     for (epoch, example) in examples.iter().enumerate() {
         let (input, expected_output) =  example;
 
-        let (error, outputs) = weather_net.train_iter(&input, &expected_output);
-        println!("Predicted next day conditions {:?}, Actual next day {:?}", weather_net.neural_output_to_conditions(&outputs), weather_net.neural_output_to_conditions(&expected_output));
-        println!("output {:?}, expected {:?}", &outputs, &expected_output);
-        println!("\n\nnn input \n{:?}", input);
+        let (error, weight_changes, output) = weather_net.train_iter(&input, &expected_output);
 
         let b1 = std::io::stdin().read_line(&mut String::from(""));
         error_over_epochs.push((epoch as f32, error.clone()));
