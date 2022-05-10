@@ -14,12 +14,24 @@ impl Node {
     pub fn new(num_weights: &usize) -> Node {
         let mut weights: Vec<f64> = vec![];
         for i in 0..*num_weights as u32 {
-            weights.push(rand::thread_rng().gen_range(-1.0..1.0));
+            weights.push(rand::thread_rng().gen_range(-2.95..2.95));
         }
         Node {
             weights: weights,
             bias: 0.0,
         }
+    }
+
+    pub fn empty(num_weights: &usize) -> Node {
+        let mut weights: Vec<f64> = vec![];
+        for i in 0..*num_weights as u32 {
+            weights.push(0.0);
+        }
+        Node {
+            weights: weights,
+            bias: 0.0,
+        }
+            
     }
 
     pub fn weights(&self) -> &Vec<f64> {

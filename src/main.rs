@@ -43,7 +43,7 @@ fn print_progress(epoch: usize, perc_completion: f64, current_error: f64) {
 }
 
 fn train_network(is_running: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
-    // simple_logging::log_to_file("weather_train.log", LevelFilter::Debug);
+    simple_logging::log_to_file("weather_train.log", LevelFilter::Debug);
 
     // TODO have a very small change in weight when doing batches (so that it approximates continuous)
     let mut weather_data =
@@ -53,7 +53,7 @@ fn train_network(is_running: Arc<AtomicBool>) -> Result<(), Box<dyn Error>> {
 
     // Train the network while keeping track of its error
     let mut examples = weather_net.create_training_examples();
-    let num_epochs = 10000;
+    let num_epochs = 1000;
     let error_over_epochs = Arc::new(Mutex::new(Vec::new()));
 
     weather_net.train(num_epochs, &mut examples, is_running, &|epoch, rmse| {

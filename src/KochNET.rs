@@ -4,20 +4,21 @@ use std::fs;
 use std::io::Write;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::iter::Iterator;
 use std::{fs::File, io::Error};
-
+use rayon::prelude::*;
 use log::debug;
 use serde::{Deserialize, Serialize};
 
 pub type Layer = Vec<Node>;
 pub type Network = Vec<Layer>;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub enum ActivationFunc {
     Sigmoid,
     Heaviside,
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct KochNET {
     layers: Vec<Layer>,
     learn_rate: f64,
@@ -118,7 +119,7 @@ impl KochNET {
     // https://github.com/jackm321/RustNN/blob/master/src/lib.rs
     /* Returns the squared error of each output and the output itself */
     pub fn train_iter(
-        &mut self,
+        &self,
         input: &Vec<f64>,
         expected_output: &Vec<f64>,
     ) -> (f64, Vec<Layer>, Vec<f64>) {
@@ -179,6 +180,21 @@ impl KochNET {
         return total;
     }
 
+
+    /// Returns an uninitialized set of nodes with the proper number of weights
+    fn clone_layer_shape(&self) -> Vec<Vec<Node>> {
+        let mut layers = Vec::new();
+        for l in self.layers.iter() {
+            let mut copied_nodes = Vec::new();
+
+            for node in l.iter() {
+                copied_nodes.push(Node::empty(&node.weights().len()));
+            }
+            layers.push(copied_nodes);
+        }
+        return layers;
+    }
+
     pub fn train(
         &mut self,
         epochs: usize,
@@ -221,6 +237,7 @@ impl KochNET {
         println!("Saving the network.......");
         self.save();
     }
+
 
     fn combine_layers(n1: Vec<Layer>, n2: Vec<Layer>) -> Vec<Layer> {
         if n1.len() != n2.len() {
@@ -315,7 +332,9 @@ impl KochNET {
 
 #[cfg(test)]
 mod tests {
-    use crate::KochNET::KochNET;
+    use std::sync::{atomic::AtomicBool, Arc};
+
+    use crate::KochNET::{KochNET, ActivationFunc};
     use log::LevelFilter;
 
     #[test]
@@ -431,7 +450,7 @@ mod tests {
         // simple_logging::log_to_file("and_train.log", LevelFilter::Debug);
 
         let mut AND_nn = KochNET::new(vec![2, 1], 0.05);
-        AND_nn.set_activation_func(&KochNET::sigmoid);
+        AND_nn.set_activation_func(ActivationFunc::Sigmoid);
 
         let mut examples = vec![
             (vec![0.0, 0.0], vec![0.0]),
@@ -439,7 +458,7 @@ mod tests {
             (vec![0.0, 1.0], vec![0.0]),
             (vec![1.0, 1.0], vec![1.0]),
         ];
-        AND_nn.train(1000, &mut examples);
+        AND_nn.train(1000, &mut examples, Arc::new(AtomicBool::new(true)), &|a: usize, b:f64|{});
 
         assert_eq!(AND_nn.run(&vec![0.0, 0.0])[0].round(), 0.0);
         assert_eq!(AND_nn.run(&vec![0.0, 1.0])[0].round(), 0.0);
@@ -452,7 +471,7 @@ mod tests {
         // simple_logging::log_to_file("and_train.log", LevelFilter::Debug);
 
         let mut AND_nn = KochNET::new(vec![2, 2, 1], 0.05);
-        AND_nn.set_activation_func(&KochNET::sigmoid);
+        AND_nn.set_activation_func(ActivationFunc::Sigmoid);
 
         let mut examples = vec![
             (vec![0.0, 0.0], vec![0.0]),
@@ -460,7 +479,7 @@ mod tests {
             (vec![0.0, 1.0], vec![0.0]),
             (vec![1.0, 1.0], vec![1.0]),
         ];
-        AND_nn.train(10000, &mut examples);
+        AND_nn.train(10000, &mut examples, Arc::new(AtomicBool::new(true)), &|a: usize, b:f64|{});
 
         assert_eq!(AND_nn.run(&vec![0.0, 0.0])[0].round(), 0.0);
         assert_eq!(AND_nn.run(&vec![0.0, 1.0])[0].round(), 0.0);
@@ -473,7 +492,7 @@ mod tests {
         // simple_logging::log_to_file("or_train.log", LevelFilter::Debug);
 
         let mut OR_nn = KochNET::new(vec![2, 2, 1], 0.05);
-        OR_nn.set_activation_func(&KochNET::sigmoid);
+        OR_nn.set_activation_func(ActivationFunc::Sigmoid);
 
         let mut examples = vec![
             (vec![0.0, 0.0], vec![0.0]),
@@ -481,7 +500,7 @@ mod tests {
             (vec![0.0, 1.0], vec![1.0]),
             (vec![1.0, 1.0], vec![1.0]),
         ];
-        OR_nn.train(10000, &mut examples);
+        OR_nn.train(10000, &mut examples, Arc::new(AtomicBool::new(true)), &|a: usize, b:f64|{});
 
         assert_eq!(OR_nn.run(&vec![0.0, 0.0])[0].round(), 0.0);
         assert_eq!(OR_nn.run(&vec![0.0, 1.0])[0].round(), 1.0);
@@ -494,7 +513,7 @@ mod tests {
         // simple_logging::log_to_file("or_train.log", LevelFilter::Debug);
 
         let mut OR_nn = KochNET::new(vec![2, 1], 0.05);
-        OR_nn.set_activation_func(&KochNET::sigmoid);
+        OR_nn.set_activation_func(ActivationFunc::Sigmoid);
 
         let mut examples = vec![
             (vec![0.0, 0.0], vec![0.0]),
@@ -502,7 +521,7 @@ mod tests {
             (vec![0.0, 1.0], vec![1.0]),
             (vec![1.0, 1.0], vec![1.0]),
         ];
-        OR_nn.train(1000, &mut examples);
+        OR_nn.train(1000, &mut examples, Arc::new(AtomicBool::new(true)), &|a: usize, b:f64|{});
 
         assert_eq!(OR_nn.run(&vec![0.0, 0.0])[0].round(), 0.0);
         assert_eq!(OR_nn.run(&vec![0.0, 1.0])[0].round(), 1.0);
@@ -514,7 +533,7 @@ mod tests {
     fn test_XOR_train() {
         // simple_logging::log_to_file("xor_train.log", LevelFilter::Debug);
         let mut XOR_nn = KochNET::new(vec![2, 2, 1], 0.005);
-        XOR_nn.set_activation_func(&KochNET::sigmoid);
+        XOR_nn.set_activation_func(ActivationFunc::Sigmoid);
 
         let mut examples = vec![
             (vec![0.0, 0.0], vec![0.0]),
@@ -522,7 +541,7 @@ mod tests {
             (vec![0.0, 1.0], vec![1.0]),
             (vec![1.0, 1.0], vec![0.0]),
         ];
-        XOR_nn.train(100000, &mut examples);
+        XOR_nn.train(10000, &mut examples, Arc::new(AtomicBool::new(true)), &|a: usize, b:f64|{});
 
         assert_eq!(XOR_nn.run(&vec![1.0, 1.0])[0].round(), 0.0);
         assert_eq!(XOR_nn.run(&vec![1.0, 0.0])[0].round(), 1.0);
