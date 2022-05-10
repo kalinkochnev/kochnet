@@ -1,19 +1,31 @@
 use crate::node::Node;
 use rand::{seq::SliceRandom, thread_rng};
+use std::fs;
+use std::io::Write;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::{fs::File, io::Error};
 
 use log::debug;
-
+use serde::{Deserialize, Serialize};
 
 pub type Layer = Vec<Node>;
 pub type Network = Vec<Layer>;
 
+#[derive(Serialize, Deserialize)]
+pub enum ActivationFunc {
+    Sigmoid,
+    Heaviside,
+}
+#[derive(Serialize, Deserialize)]
 pub struct KochNET {
     layers: Vec<Layer>,
     learn_rate: f64,
-    activation_func: Box<dyn Fn(f64) -> f64>,
+    activation_func: ActivationFunc,
 }
 
 impl KochNET {
+    const SAVE_FILE: &'static str = "network_params.json";
     pub fn new(layer_config: Vec<usize>, learn_rate: f64) -> KochNET {
         let mut nn = Self::empty();
         nn.set_learn_rate(learn_rate);
@@ -25,13 +37,20 @@ impl KochNET {
         let nn = KochNET {
             layers: Vec::new(),
             learn_rate: 0.0,
-            activation_func: Box::new(Self::heaviside),
+            activation_func: ActivationFunc::Heaviside,
         };
         return nn;
     }
 
-    pub fn set_activation_func(&mut self, activation_func: &'static dyn Fn(f64) -> f64) {
-        self.activation_func = Box::new(activation_func);
+    pub fn set_activation_func(&mut self, func: ActivationFunc) {
+        self.activation_func = func;
+    }
+
+    pub fn get_activation_func(&self) -> &'static dyn Fn(f64) -> f64 {
+        match self.activation_func {
+            ActivationFunc::Heaviside => return &Self::heaviside,
+            ActivationFunc::Sigmoid => return &Self::sigmoid,
+        }
     }
 
     pub fn set_learn_rate(&mut self, learn_rate: f64) {
@@ -83,8 +102,12 @@ impl KochNET {
 
         let mut layer_changes: Layer = Vec::new();
         for ((node, activation), expected) in node_iter.zip(expected.iter()) {
-            let (error, node_change) =
-                node.delta_node_output_layer(self.learn_rate, activation, expected, &second_last_activations);
+            let (error, node_change) = node.node_change_output(
+                self.learn_rate,
+                activation,
+                expected,
+                &second_last_activations,
+            );
 
             layer_changes.push(node_change);
             errors.push(error);
@@ -94,84 +117,58 @@ impl KochNET {
 
     // https://github.com/jackm321/RustNN/blob/master/src/lib.rs
     /* Returns the squared error of each output and the output itself */
-    pub fn train_iter(&mut self, input: &Vec<f64>, expected_output: &Vec<f64>) -> (f64, Vec<Layer>, Vec<f64>) {
-        let (activations, output) = self.evaluate(input);
-        // let mut prev_error_terms: Vec<f64> = Vec::new(); // keeps track of error terms
-        // let mut new_error_terms: Vec<f64> = Vec::new();
+    pub fn train_iter(
+        &mut self,
+        input: &Vec<f64>,
+        expected_output: &Vec<f64>,
+    ) -> (f64, Vec<Layer>, Vec<f64>) {
+        let (mut activations, output) = self.evaluate(input);
 
         // Work backwards starting from the last layer as the "input"
         let mut new_layers: Vec<Layer> = vec![];
-        let mut prev_errors = Vec::new();
+        let mut errors = Vec::new();
 
         // initialize the errors to do backpropogation using the output layer and the target layer
-        self.train_output_layer(&activations, &expected_output, &mut prev_errors, &mut new_layers);
+        debug!("-------------------------------- OUTPUT TRAINING --------------------------------");
+        self.train_output_layer(&activations, &expected_output, &mut errors, &mut new_layers);
 
-        // // Do backpropagation on the remaining layers
-        // for L in (0..self.layers.len() - 2).rev() {
-        //     let (input_layer, output_layer) = (&self.layers[L], &self.layers[L + 1]);
-        //     let (input_activations, output_activations) = (&activations[L], &activations[L + 1]);
-        //     let temp_errors = Vec::new();
+        // Do backpropagation on the remaining layers
+        debug!(
+            "-------------------------------- BACKPROP TRAINING --------------------------------"
+        );
 
-        //     // Repeat the process of updating weights for each node in the output layer (since the weights
-        //     // are stored on the output layer nodes)
-        //     for (output_node, output_activ) in output_layer.iter().zip(output_activations) {
-                
-        //     }
+        for L in (1..self.layers.len() - 1).rev() {
+            let (current_layer, downstream_layer) = (&self.layers[L], &self.layers[L + 1]);
+            let (upstream_activations, current_activations) =
+                (&activations[L - 1], &activations[L]);
 
-        // }
+            let mut layer_errors = Vec::new();
+            let mut layer_changes: Layer = Vec::new();
+
+            // Repeat the process of updating weights for each node in the output layer (since the weights
+            // are stored on the output layer nodes)
+
+            for (curr_node_index, (curr_node, curr_node_activ)) in
+                current_layer.iter().zip(current_activations).enumerate()
+            {
+                let (error, node_change) = curr_node.node_change_hidden_layer(
+                    &self.learn_rate,
+                    curr_node_activ,
+                    curr_node_index,
+                    &errors,
+                    downstream_layer,
+                    upstream_activations,
+                );
+                layer_errors.push(error);
+                layer_changes.push(node_change);
+            }
+            errors = layer_errors;
+            new_layers.insert(0, layer_changes);
+        }
 
         // Add the input layer to the front of the new_layers since combine_layers() needs equal sizing
         new_layers.insert(0, self.layers[0].clone());
         return (self.rmse(&output, expected_output), new_layers, output);
-    }
-
-    /// Returns (error_term, delta_weight) for a particular neuron (based on backpropogation)
-    /// * `input_layer_index` - What layer is currently being treated as the input layer
-    /// * `start_index` (j)- The input layer node index to calculate the weight change for
-    /// * `end_index` (i)- The output layer node index to calculate the weight change for
-    /// * `layer_activations` - This all the saved activations for a particular input
-    /// * `errors` - These are the error terms (see wikipedia) for the layer ahead
-    /// https://en.wikipedia.org/wiki/Backpropagation#Derivation
-    /// 1. Calculate the δ(Error)/δ(output_j)
-    ///     You need to find the contributions of the activated node to the error (since it
-    ///     affects the neurons in the next layer too)
-    /// ```
-    ///     Layer j     Layer l
-    ///     (A)         |---(0.2)
-    ///     (B)---------|---(0.3)
-    ///     (C)         |---(0.1)
-    /// ```
-    /// 2. Calculate δ(activation_j)/δ(output_j)
-    ///     If using the sigmoid as the activation function,
-    ///     this is just activation_j * (1 - activation_j)
-    fn weight_change_hidden(
-        &self,
-        start_index: usize,
-        end_index: usize,
-        input_layer_index: usize,
-        layer_activations: &Vec<Vec<f64>>,
-        errors: &Vec<f64>,
-    ) -> (f64, f64) {
-        let output_layer = &self.layers[input_layer_index + 1];
-        let mut err_rspct_input_actv = 0.0; // δ(Error)/δ(output)j where j is the "input" layer (since we're working backwards)
-
-        for (_output_ind, output_neuron) in output_layer.iter().enumerate() {
-            let input_output_weight = output_neuron.weights()[start_index];
-            err_rspct_input_actv += input_output_weight * &errors[end_index];
-        }
-        // debug!("Error term (where i is a hidden neuron):\nΣ[err_term_j * ] * {} * (1.0 - {})", expected, output_activ, output_activ, output_activ);
-
-        // Calculate the δ(activation input)/δ(weighted sum to input)j
-        let input_activ = &layer_activations[input_layer_index][start_index];
-        let activation_rspct_wghted_sum = input_activ * (1.0 - input_activ);
-
-        let error_term = err_rspct_input_actv * activation_rspct_wghted_sum;
-
-        // Calculate the gradient of the error function with respect to weight
-        let output_activation = &layer_activations[input_layer_index][end_index];
-        let delta_error_resp_weight = error_term * output_activation;
-
-        return (error_term, delta_error_resp_weight);
     }
 
     fn rmse(&self, output: &Vec<f64>, expected: &Vec<f64>) -> f64 {
@@ -182,8 +179,13 @@ impl KochNET {
         return total;
     }
 
-    pub fn train(&mut self, epochs: usize, examples: &mut Vec<(Vec<f64>, Vec<f64>)>) {
-
+    pub fn train(
+        &mut self,
+        epochs: usize,
+        examples: &mut Vec<(Vec<f64>, Vec<f64>)>,
+        is_running: Arc<AtomicBool>,
+        handle_data: &dyn Fn(usize, f64)
+    ) {
         let mut avg_err = 0f64;
         for _e in 0..epochs {
             let mut combined_changes: Network = self.layers.clone();
@@ -191,23 +193,42 @@ impl KochNET {
             examples.shuffle(&mut thread_rng());
 
             for (input, expected) in examples.iter() {
+                if !is_running.load(Ordering::Relaxed) {
+                    println!("Saving the network.......");
+                    self.save();
+                    std::process::exit(0);
+                }
                 let (rmse, weight_changes, output) = self.train_iter(input, expected);
                 epoch_rmse += rmse;
 
+                debug!(
+                    "Combined changes ---- \n{:?} \n\n Weight changes: ---- {:?}",
+                    combined_changes, weight_changes
+                );
+
                 combined_changes = Self::combine_layers(combined_changes, weight_changes);
-                // println!("{:?}", combined_changes);
                 // println!("{:?}", output);
             }
             avg_err = epoch_rmse / (examples.len() as f64);
+            (handle_data)(_e, avg_err);
             self.layers = combined_changes;
-            debug!("Avg RMSE {}: : : :\nCombined ----- {:?} ", avg_err, self.layers);
+            debug!(
+                "Avg RMSE {}: : : :\nCombined ----- {:?} ",
+                avg_err, self.layers
+            );
             // print!("{}, ", avg_err);
         }
+        println!("Saving the network.......");
+        self.save();
     }
 
     fn combine_layers(n1: Vec<Layer>, n2: Vec<Layer>) -> Vec<Layer> {
         if n1.len() != n2.len() {
-            panic!("Cannot combine networks of different length!");
+            panic!(
+                "Cannot combine networks of different length! n1: {}, n2: {}",
+                n1.len(),
+                n2.len()
+            );
         }
         let mut new_network: Vec<Layer> = n1;
 
@@ -261,7 +282,7 @@ impl KochNET {
 
                 node_output += node.bias();
 
-                output.push((self.activation_func)(node_output));
+                output.push((self.get_activation_func())(node_output));
             }
 
             // We save the activations for when we are training the neural network
@@ -274,6 +295,21 @@ impl KochNET {
     pub fn run(&self, inputs: &[f64]) -> Vec<f64> {
         let (activations, output) = self.evaluate(inputs);
         return output;
+    }
+
+    pub fn save(&self) -> Result<(), Error> {
+        let network_string = serde_json::to_string(&self).unwrap();
+        let mut output = File::create(Self::SAVE_FILE)?;
+        write!(output, "{}", network_string).expect("There was an error saving the network");
+        Ok(())
+    }
+
+    pub fn load() -> Result<KochNET, Error> {
+        let contents = fs::read_to_string(Self::SAVE_FILE).expect("Loading the file went wrong");
+        let network: KochNET = serde_json::from_str(contents.as_str())?;
+        println!("Sucessfully loaded the network");
+
+        Ok(network)
     }
 }
 
@@ -326,6 +362,32 @@ mod tests {
     }
 
     #[test]
+    fn test_XOR_eval() {
+        fn ann_XOR(A: u32, B: u32) -> f64 {
+            let mut nn = KochNET::new(vec![2, 2, 1], 0.01);
+
+            nn.layers[1][0].weights_mut()[0] = 20.0;
+            nn.layers[1][0].weights_mut()[1] = 20.0;
+            nn.layers[1][0].set_bias(-10.0);
+
+            nn.layers[1][1].weights_mut()[0] = -20.0;
+            nn.layers[1][1].weights_mut()[1] = -20.0;
+            nn.layers[1][1].set_bias(30.0);
+
+            nn.layers[2][0].weights_mut()[0] = 20.0;
+            nn.layers[2][0].weights_mut()[1] = 20.0;
+            nn.layers[2][0].set_bias(-30.0);
+
+            return nn.run(&[A as f64, B as f64])[0];
+        }
+
+        assert_eq!(ann_XOR(0, 0), 0.0);
+        assert_eq!(ann_XOR(0, 1), 1.0);
+        assert_eq!(ann_XOR(1, 0), 1.0);
+        assert_eq!(ann_XOR(1, 1), 0.0);
+    }
+
+    #[test]
     fn test_AND_eval() {
         fn ann_AND(A: u32, B: u32) -> f64 {
             let mut nn = KochNET::new(vec![2, 1], 0.05);
@@ -354,14 +416,12 @@ mod tests {
         nn2.layers[1][0].weights_mut()[1] = 1.0;
         nn2.layers[1][0].set_bias(-1.5);
 
-
         let mut expected_nn = KochNET::new(vec![2, 1], 0.01);
         expected_nn.layers[1][0].weights_mut()[0] = 0.0;
         expected_nn.layers[1][0].weights_mut()[1] = 2.0;
         expected_nn.layers[1][0].set_bias(-2.0);
 
         let combined = KochNET::combine_layers(nn1.layers, nn2.layers);
-
 
         assert_eq!(combined, expected_nn.layers)
     }
@@ -387,6 +447,47 @@ mod tests {
         assert_eq!(AND_nn.run(&vec![1.0, 1.0])[0].round(), 1.0);
     }
 
+    #[test]
+    fn test_AND_train_3_layers() {
+        // simple_logging::log_to_file("and_train.log", LevelFilter::Debug);
+
+        let mut AND_nn = KochNET::new(vec![2, 2, 1], 0.05);
+        AND_nn.set_activation_func(&KochNET::sigmoid);
+
+        let mut examples = vec![
+            (vec![0.0, 0.0], vec![0.0]),
+            (vec![1.0, 0.0], vec![0.0]),
+            (vec![0.0, 1.0], vec![0.0]),
+            (vec![1.0, 1.0], vec![1.0]),
+        ];
+        AND_nn.train(10000, &mut examples);
+
+        assert_eq!(AND_nn.run(&vec![0.0, 0.0])[0].round(), 0.0);
+        assert_eq!(AND_nn.run(&vec![0.0, 1.0])[0].round(), 0.0);
+        assert_eq!(AND_nn.run(&vec![1.0, 0.0])[0].round(), 0.0);
+        assert_eq!(AND_nn.run(&vec![1.0, 1.0])[0].round(), 1.0);
+    }
+
+    #[test]
+    fn test_OR_train_3_layers() {
+        // simple_logging::log_to_file("or_train.log", LevelFilter::Debug);
+
+        let mut OR_nn = KochNET::new(vec![2, 2, 1], 0.05);
+        OR_nn.set_activation_func(&KochNET::sigmoid);
+
+        let mut examples = vec![
+            (vec![0.0, 0.0], vec![0.0]),
+            (vec![1.0, 0.0], vec![1.0]),
+            (vec![0.0, 1.0], vec![1.0]),
+            (vec![1.0, 1.0], vec![1.0]),
+        ];
+        OR_nn.train(10000, &mut examples);
+
+        assert_eq!(OR_nn.run(&vec![0.0, 0.0])[0].round(), 0.0);
+        assert_eq!(OR_nn.run(&vec![0.0, 1.0])[0].round(), 1.0);
+        assert_eq!(OR_nn.run(&vec![1.0, 0.0])[0].round(), 1.0);
+        assert_eq!(OR_nn.run(&vec![1.0, 1.0])[0].round(), 1.0);
+    }
 
     #[test]
     fn test_OR_train() {
@@ -411,6 +512,7 @@ mod tests {
 
     #[test]
     fn test_XOR_train() {
+        // simple_logging::log_to_file("xor_train.log", LevelFilter::Debug);
         let mut XOR_nn = KochNET::new(vec![2, 2, 1], 0.005);
         XOR_nn.set_activation_func(&KochNET::sigmoid);
 
@@ -420,11 +522,11 @@ mod tests {
             (vec![0.0, 1.0], vec![1.0]),
             (vec![1.0, 1.0], vec![0.0]),
         ];
-        XOR_nn.train(500, &mut examples);
+        XOR_nn.train(100000, &mut examples);
 
-        assert_eq!(XOR_nn.run(&vec![0.0, 0.0])[0], 0.0);
-        assert_eq!(XOR_nn.run(&vec![0.0, 1.0])[0], 1.0);
-        assert_eq!(XOR_nn.run(&vec![1.0, 0.0])[0], 1.0);
-        assert_eq!(XOR_nn.run(&vec![1.0, 1.0])[0], 0.0);
+        assert_eq!(XOR_nn.run(&vec![1.0, 1.0])[0].round(), 0.0);
+        assert_eq!(XOR_nn.run(&vec![1.0, 0.0])[0].round(), 1.0);
+        assert_eq!(XOR_nn.run(&vec![0.0, 1.0])[0].round(), 1.0);
+        assert_eq!(XOR_nn.run(&vec![0.0, 0.0])[0].round(), 0.0);
     }
 }

@@ -4,9 +4,9 @@ use log::debug;
 use crate::{
     weather_data::{RecordsSetting, WeatherData},
     weather_record::WeatherRecord,
-    KochNET::{KochNET, Layer}, node::Node,
+    KochNET::{KochNET, Layer, ActivationFunc}, node::Node,
 };
-use std::{error::Error, collections::HashMap, cmp::Ordering};
+use std::{error::Error, collections::HashMap, cmp::Ordering, sync::{atomic::AtomicBool, Arc}};
 use regex::Regex;
 
 pub struct WeatherNeuralNetwork<'a> {
@@ -30,7 +30,7 @@ impl<'a> WeatherNeuralNetwork<'a> {
 
         // initialize weather types so layer size
         weather_net.init_weather_conditions();
-        weather_net.network.set_activation_func(&KochNET::sigmoid);
+        weather_net.network.set_activation_func(ActivationFunc::Sigmoid);
 
         // set layer sizes
         let mut layers = vec![weather_net.input_size()];
@@ -78,6 +78,16 @@ impl<'a> WeatherNeuralNetwork<'a> {
     /* Outputs the errors of the output and the output of the network*/
     pub fn train_iter(&mut self, input: &Vec<f64>, expected_output: &Vec<f64>) -> (f64, Vec<Layer>, Vec<f64>) {
         return self.network.train_iter(input, expected_output);
+    }
+
+    pub fn train(
+        &mut self,
+        epochs: usize,
+        examples: &mut Vec<(Vec<f64>, Vec<f64>)>,
+        is_running: Arc<AtomicBool>,
+        handle_data: &dyn Fn(usize, f64)
+    ) {
+        self.network.train(epochs, examples, is_running, handle_data)
     }
 
     pub fn record_to_neural_input(&self, record: &WeatherRecord) -> Vec<f64> {
